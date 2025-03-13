@@ -1,0 +1,15 @@
+# Object Detection Course
+
+cvzone==1.5.6
+hydra-core>=1.2.0
+matplotlib>=3.4.3
+opencv-python>=4.5.4.60
+pillow>=8.3.1
+PyYAML>=5.3.1
+requests>=2.26.0
+scipy>=1.7.1
+torch>=1.9.0
+torchvision>=0.10.0
+tqdm>=4.64.0
+scikit-image>=0.19.3
+lap>=0.4.0
