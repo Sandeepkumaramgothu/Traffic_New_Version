@@ -2,35 +2,27 @@ from ultralytics import YOLO
 import cv2
 import numpy as np
 import cvzone
+import os
 from sort import Sort
 
-cap = cv2.VideoCapture(r"C:\Users\sande\Downloads\Test_Video_3.mp4")
+# === Setup ===
+os.makedirs("evaluation/results", exist_ok=True)
+output_file = open("evaluation/results/yolo_sort.txt", "w")
+frame_id = 1
+
+# Load model
+model = YOLO("yolov8l.pt")
+class_names = model.names
+
+# Load video
+cap = cv2.VideoCapture(r"C:\Users\sande\Downloads\Traffic.mp4")
 cap.set(3, 1280)
 cap.set(4, 720)
 
-model = YOLO("yolov8l.pt")
-model.overrides['conf'] = 0.5
-model.overrides['iou'] = 0.3
-
-class_names = ["person", "bicycle", "car", "motorcycle", "aeroplane", "bus",
-               "train", "truck", "boat", "traffic light", "fire hydrant",
-               "stop sign", "parking meter", "bench", "bird", "cat", "dog",
-               "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe",
-               "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-               "skis", "snowboard", "sports ball", "kite", "baseball bat",
-               "baseball glove", "skateboard", "surfboard", "tennis racket",
-               "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl",
-               "banana", "apple", "sandwich", "orange", "broccoli", "carrot",
-               "hot dog", "pizza", "donut", "cake", "chair", "sofa",
-               "pottedplant", "bed", "diningtable", "toilet", "tvmonitor",
-               "laptop", "mouse", "remote", "keyboard", "cell phone",
-               "microwave", "oven", "toaster", "sink", "refrigerator", "book",
-               "clock", "vase", "scissors", "teddy bear", "hair drier",
-               "toothbrush"]
-
+# Initialize tracker
 tracker = Sort(max_age=20, min_hits=2, iou_threshold=0.3)
 
-# Track states: ID -> "above" or "below"
+# Initialize line crossing counters
 states = {}
 up_count = 0
 down_count = 0
@@ -41,51 +33,40 @@ while True:
     if not success:
         break
 
-    # YOLO inference
     results = model(img, stream=True)
-    
-    # Prepare array for detections: [x1, y1, x2, y2, conf]
     detections = np.empty((0, 5))
 
     for r in results:
-        boxes = r.boxes
-        for box in boxes:
+        for box in r.boxes:
             x1, y1, x2, y2 = box.xyxy[0]
             x1, y1, x2, y2 = map(int, (x1, y1, x2, y2))
-
             conf = round(box.conf[0].item(), 2)
             cls = int(box.cls[0])
-            current_class = class_names[cls]
 
-            if current_class in ["car", "truck", "bus", "motorcycle"] and conf > 0.3:
-                detection = [x1, y1, x2, y2, conf]
-                detections = np.vstack((detections, detection))
+            if cls >= len(class_names):
+                continue
 
-    # Update tracker
+            label = class_names[cls]
+            if label in ["car", "truck", "bus", "motorcycle"] and conf > 0.3:
+                detections = np.vstack((detections, [x1, y1, x2, y2, conf]))
+
+    # Track updates
     tracks = tracker.update(detections)
-
-    # Determine the image width for drawing a full-width line
     height, width, _ = img.shape
-    line_color = (0, 0, 255)  # Default to red
+    line_color = (0, 0, 255)
+    crossed_up, crossed_down = False, False
 
-    # Flags to see if any crossing happened this frame
-    crossed_up = False
-    crossed_down = False
-
-    # Draw tracker boxes and do up/down logic
     for track in tracks:
         x1, y1, x2, y2, track_id = track.astype(int)
-        
-        # Draw bounding box
+        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+
+        # Draw box and ID
         cvzone.cornerRect(img, (x1, y1, x2 - x1, y2 - y1), colorR=(255, 0, 255))
         cvzone.putTextRect(img, f"ID: {track_id}", (x1, y1 - 10), scale=1, thickness=2)
-
-        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
         cv2.circle(img, (cx, cy), 5, (255, 0, 255), cv2.FILLED)
 
-        # above/below line
+        # Line crossing logic
         current_state = "above" if cy < line_position else "below"
-        
         if track_id not in states:
             states[track_id] = current_state
         else:
@@ -98,24 +79,30 @@ while True:
                 crossed_up = True
             states[track_id] = current_state
 
-    # Change line color based on crossing
+        # Save to file (MOT format)
+        w, h = x2 - x1, y2 - y1
+        output_file.write(f"{frame_id},{track_id},{x1},{y1},{w},{h},1,-1,-1,-1\n")
+
+    # Draw crossing line
     if crossed_up and crossed_down:
-        line_color = (255, 0, 255)  # magenta
+        line_color = (255, 0, 255)
     elif crossed_up:
-        line_color = (255, 0, 0)    # blue
+        line_color = (255, 0, 0)
     elif crossed_down:
-        line_color = (0, 255, 0)    # green
+        line_color = (0, 255, 0)
 
-    # Draw a full-width line at line_position
     cv2.line(img, (0, line_position), (width, line_position), line_color, 3)
-
-    # Show up/down counts
     cvzone.putTextRect(img, f"Up: {up_count}", (10, 50), scale=2, thickness=2)
     cvzone.putTextRect(img, f"Down: {down_count}", (10, 110), scale=2, thickness=2)
 
-    cv2.imshow("Image", img)
+    frame_id += 1
+    cv2.imshow("YOLO+SORT Tracker", img)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+# === Cleanup ===
 cap.release()
 cv2.destroyAllWindows()
+output_file.close()
+print("✅ Tracking results saved to:", "evaluation/results/yolo_sort.txt")
+print("✅ YOLO+SORT tracking completed.")   
