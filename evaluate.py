@@ -3,11 +3,12 @@ import pandas as pd
 import os
 
 def load_mot_file(path):
-    return mm.io.loadtxt(open(path), fmt="mot15-2", min_confidence=0.0)
+    df = mm.io.loadtxt(open(path), min_confidence=0.0)
+    df.columns = ["FrameId", "Id", "X", "Y", "Width", "Height"]  # 6 only
+    return df
 
 def evaluate(gt_path, pred_path, tracker_name):
     acc = mm.MOTAccumulator(auto_id=True)
-
     gt = load_mot_file(gt_path)
     pred = load_mot_file(pred_path)
 
@@ -29,7 +30,6 @@ def evaluate(gt_path, pred_path, tracker_name):
 
 def main():
     gt_path = 'ground_truth/gt.txt'
-
     results = {
         "YOLO+SORT": "evaluation/results/yolo_sort.txt",
         "V2 Tracker": "evaluation/results/v2_vehicle.txt"
@@ -43,7 +43,7 @@ def main():
             print(f"Prediction file missing: {pred_path}")
 
     mh = mm.metrics.create()
-    summary = mm.io.render_summary(accs, formatters=mh.formatters, namemap=mm.io.motchallenge_metric_names)
+    summary = mh.compute_many(accs.values(), names=accs.keys(), metrics=mm.metrics.motchallenge_metrics, generate_overall=True)
     print(summary)
 
 if __name__ == "__main__":

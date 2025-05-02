@@ -1,0 +1,7 @@
+=== Vehicle Counting Accuracy ===
+
+Tracker        GT Count    Predicted   Error   Accuracy    Result         
+YOLO+SORT      60          330         270     -350.00%    Overcounted    
+V2 Tracker     60          511         451     -651.67%    Overcounted    
+
+[No MOT summary generated – possibly all input files were empty or missing.]
